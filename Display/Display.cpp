@@ -1,6 +1,8 @@
 #include "Display.h"
+#include "main.h"
 
 Display::Display()
+    : tick(0)
 {
     // Constructor implementation
 }
@@ -9,14 +11,26 @@ Display disp;
 
 void Display::disp_init()
 {
-    // Initialization code for the display
+
+    if (sdram_init() != 0)
+    {
+        while (1)
+        {
+            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
+            HAL_Delay(100);
+        }
+    }
+
 }
+
 void Display::disp_run()
 {
-    if (HAL_GetTick() - tick < 1000) // Check if 1 second has passed
+
+    if (HAL_GetTick() - tick < 100)
         return;
-    tick = HAL_GetTick();                  // Update the tick to current time
-    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle the GPIO pin
+    tick = HAL_GetTick();
+    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_1);
+
     debug_poll();
 }
 
@@ -27,6 +41,6 @@ void run()
     {
         disp.disp_run();
         if (g_enter_bootloader)
-            request_bootloader();
+            bootloader_request();
     }
 }

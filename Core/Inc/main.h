@@ -53,10 +53,14 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+void bootloader_request(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define LED_ERR_Pin GPIO_PIN_0
+#define LED_ERR_GPIO_Port GPIOB
+#define LED_RUN_Pin GPIO_PIN_1
+#define LED_RUN_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

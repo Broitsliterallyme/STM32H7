@@ -90,6 +90,8 @@ void HardFault_Handler(void)
   while (1)
   {
     /* USER CODE BEGIN W1_HardFault_IRQn 0 */
+            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);   /* fast red blink = HardFault */
+        for (volatile uint32_t i = 0; i < 500000; i++) { }
     /* USER CODE END W1_HardFault_IRQn 0 */
   }
 }

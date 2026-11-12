@@ -42,14 +42,17 @@ add_subdirectory(cmake/stm32cubemx)
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Display/Display.cpp
-    Display/bootloader.c
     robotlib/common/debug.c
+    BSP/sdram.c
+    Test/sdram_test.c
 
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
+    BSP
+    Test
     Display
     robotlib
 )
