@@ -44,7 +44,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Display/Display.cpp
     robotlib/common/debug.c
     BSP/sdram.c
+    BSP/lcd_ltdc.c
+    BSP/lcd.c
+    BSP/touch.c
     Test/sdram_test.c
+
 
 )
 

@@ -46,7 +46,7 @@ uint8_t sdram_init(void)
     err |= sdram_send_cmd(0, 2, 0, 0);
     err |= sdram_send_cmd(0, 3, 8, 0);
     err |= sdram_send_cmd(0, 4, 0, mregval);
-    err |= (HAL_SDRAM_ProgramRefreshRate(SDRAM_HANDLE, 839) != HAL_OK);  /* recalculate! */
+    err |= (HAL_SDRAM_ProgramRefreshRate(SDRAM_HANDLE, 839) != HAL_OK);  
     return err;
 }
 
