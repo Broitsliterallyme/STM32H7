@@ -9,11 +9,11 @@
 #include "main.h"
 #include "gpio.h"
 #include "lcd.h"
-#include "lcd_ltdc.h"
 #include "touch.h"
-
 #include "sdram.h"
-#include "sdram_test.h"
+#include "Widget.hpp"
+#include "Page.hpp"
+#include "PageManager.hpp"
 
 #define LED_ON(port, pin) HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET)
 #define LED_OFF(port, pin) HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET)
@@ -24,10 +24,10 @@
 #define LED_OK_OFF() LED_OFF(LED_RUN_GPIO_Port, LED_RUN_Pin)
 
 extern "C" volatile uint8_t g_enter_bootloader;
+
 class Display
 {
 public:
-    // Constructor
     Display();
 
     void disp_init();
@@ -36,6 +36,11 @@ public:
     uint32_t tick;
 
 private:
+    void build_ui();
+    RawTouch read_touch();
+
+    uint32_t graph_tick;
+    uint32_t uptime_tick;
 };
 
 extern "C"
@@ -43,6 +48,7 @@ extern "C"
 #endif
 
     void run();
+
 #ifdef __cplusplus
 }
 #endif

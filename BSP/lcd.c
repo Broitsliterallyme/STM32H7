@@ -389,7 +389,7 @@ void lcd_copy_region(uint16_t sx, uint16_t sy,
 
     uint32_t pixsz = lcdltdc.pixsize;
     uint32_t stride = lcdltdc.pwidth; /* physical panel width in pixels */
-    uint32_t base = (uint32_t)g_ltdc_framebuf[lcdltdc.activelayer];
+    uint32_t base = (uint32_t)g_ltdc_framebuf[g_draw_layer];
 
     uint32_t src_addr, dst_addr;
     uint16_t src_offline, dst_offline;
@@ -579,7 +579,6 @@ void lcd_show_string(uint16_t x, uint16_t y, uint16_t width, uint16_t height, ui
     }
 }
 
-/* ------------------------------------------------------------------ double buffering */
 void lcd_flush(void)
 {
     while (!(LTDC->CDSR & (1 << 0)))

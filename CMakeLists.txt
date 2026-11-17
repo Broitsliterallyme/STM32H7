@@ -48,6 +48,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     BSP/lcd.c
     BSP/touch.c
     Test/sdram_test.c
+    Widget/PageManager.cpp
+    Widget/Widget.cpp
+    Widget/Page.cpp
 
 
 )
@@ -59,6 +62,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Test
     Display
     robotlib
+    Widget
 )
 
 # Add project symbols (macros)

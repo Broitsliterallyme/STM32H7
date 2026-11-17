@@ -1,6 +1,14 @@
 #pragma once
 #include "Widget.hpp"
 
+// ============================================================================
+//  Page.hpp
+//
+//  Part 1: GestureTracker - the ONE place that decides what a touch means.
+//  Part 2: Page           - owns widgets, gives each touch to exactly one owner.
+//
+//      tp_scan() -> RawTouch -> GestureTracker -> Page -> Widget / page hooks
+// ============================================================================
 
 // ---- tuning: all thresholds in one place -----------------------------------
 namespace GestureCfg
@@ -33,7 +41,9 @@ struct GestureEvent
     Point start;     // where the finger FIRST went down
     Point pos;       // current position (on RELEASE: where it lifted)
     Point delta;     // movement since the previous event
-    float scale = 1; // pinch scale: now / at start
+    float scale = 1; // pinch scale: finger distance now / when the pinch started
+    bool zooming = false; // true while two fingers are pinching
+    Point center;    // midpoint between the two fingers (valid while zooming)
 };
 
 class GestureTracker
@@ -49,6 +59,8 @@ private:
     Point start, last;
     float zoom_start_dist = 0;
     float zoom_scale = 1;
+    float last_scale = 1; // last pinch values sent, so a still pinch sends nothing
+    Point last_center;
 
     GestureEvent on_down(const RawTouch &now);
     GestureEvent on_held(const RawTouch &now);
@@ -75,7 +87,7 @@ public:
 
     // Hooks for touches that belong to the PAGE (not to any widget).
     void (*on_swipe)(Page *, SwipeDir) = nullptr;
-    void (*on_zoom)(Page *, float scale) = nullptr;
+    void (*on_zoom)(Page *, float scale) = nullptr; // live pinch on empty space (no zoomable widget under it)
     void (*on_tap_empty)(Page *, Point) = nullptr;
 
     // Called by PageManager when this page becomes / stops being the visible one.
@@ -95,9 +107,16 @@ private:
     // drag can never be read as a page swipe.
     Widget *owner = nullptr;
 
+    // Two-finger pinch in progress. zoom_target is the zoomable widget under the
+    // pinch centre (nullptr = nothing there, so the page on_zoom hook gets it).
+    bool pinching = false;
+    Widget *zoom_target = nullptr;
+
     void handle(const GestureEvent &e);
     Widget *hit_test(Point p) const;
     void on_press(const GestureEvent &e);
     void on_move(const GestureEvent &e);
+    void on_pinch(const GestureEvent &e);
+    Widget *zoom_hit_test(Point p) const;
     void on_release(const GestureEvent &e);
 };

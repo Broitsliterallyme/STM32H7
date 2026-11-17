@@ -9,22 +9,23 @@ extern "C"
 }
 
 /**
- * Widget.hpp - on-screen widgets.
+ * Widget.hpp - the on-screen widgets (buttons, sliders, graphs, etc.)
  *
- * Quick reference:
- *  Coordinates : pixels, origin (0,0) = TOP-LEFT of the 800x480 landscape screen.
- *                x grows to the right, y grows downward.
- *  Colours     : give values in the screen's pixel format. Use the macros from
- *                lcd.h (WHITE, BLACK, RED, GREEN, BLUE, GRAY, ...) or
- *                RGB565(r, g, b) with r, g, b in 0..255.
- *  font_size   : only 12, 16, 24 or 32 are supported by the font table.
- *                Characters are font_size/2 pixels wide and font_size tall.
- *  Text        : plain ASCII (space to '~'). Anything else stops the string.
- *  Lifetime    : widgets are meant to be `static` / global objects. A Page
- *                stores POINTERS to them, so they must outlive the Page.
+ * Things to keep in mind when using them:
+ * 
+ *  - Positions are in pixels, with (0,0) at the top-left of the 800x480 screen.
+ *    x goes right, y goes down.
+ *  - For colours, use the macros from lcd.h (WHITE, RED, GRAY...) or
+ *    RGB565(r, g, b) with each value 0-255.
+ *  - font_size can only be 12, 16, 24 or 32. Each character is font_size/2
+ *    pixels wide and font_size pixels tall.
+ *  - Text is plain ASCII. DONOT use other encodings like utf-8 or EASCII.
+ *  - Make widgets static or global. A Page only keeps pointers to them, so
+ *    they need to still exist as long as the Page does.
  *
- *  A widget only DRAWS itself and REACTS to touch. It never reads raw touch:
- *  Page works out what a touch means and calls the touch_*() hooks below.
+ * Widgets just draw themselves and react to touch. They never look at the
+ * raw touch data. Page figures out what the touch means and calls the
+ * touch_*() functions below.
  */
 
 /** A point on the screen, in pixels. */
@@ -36,27 +37,19 @@ struct Point
 /** How a widget wants to be treated by Page when the screen is touched. */
 enum class TouchPolicy : uint8_t
 {
-    /** Display only. Page ignores it for touch, so a touch on it counts as
-     *  a touch on empty space (page swipes still work over it).
-     *  e.g. Label, ProgressBar, Graph, FpsCounter, StatusChip. */
+    //What the widget does with the touch is up to it. Page just calls the hooks by seeing the type of Gesuture that occured 
+    //NONE,TAP_ONLY,CAPTURE are the three types of touch policies that a widget can have.
+    //Page checks which policy a widget has and calls the appropriate touch hook functions on the widget.
+    //Eg: If a widget has TouchPolicy::TAP_ONLY, Page will call the touch_tap() function on the widget when a tap gesture is detected on the widget.
+    //Eg: If a widget has TouchPolicy::CAPTURE, Page will call the touch_move() function on the widget when a move gesture is detected on the widget.
+    //EG: If a widget has TouchPolicy::NONE, Page will not call any touch hook functions on the widget.
+
     NONE,
-
-    /** Reacts to a TAP. If the finger moves away from where it landed, the
-     *  widget is cancelled and the page takes over (so you can start a page
-     *  swipe on top of a button without clicking it).
-     *  e.g. Button, ToggleButton, Checkbox, InfoTile. */
     TAP_ONLY,
-
-    /** Owns the whole touch from press to release and receives every
-     *  movement live. The page NEVER treats this touch as a swipe.
-     *  e.g. Slider, LogView. */
     CAPTURE
 };
 
-/**
- * Base class of every widget. Cannot be created directly (draw() is pure
- * virtual) - use one of the concrete widgets below.
- */
+
 class Widget
 {
 public:
@@ -152,6 +145,28 @@ public:
 
     /** @brief TAP_ONLY widgets only: press and release both happened on the widget. */
     virtual void touch_tap() {}
+
+    /**
+     * @brief Set to true on widgets that can be pinch-zoomed. A pinch goes to the
+     *        zoomable widget under the midpoint of the two fingers.
+     */
+    bool zoomable = false;
+
+    /**
+     * @brief A two-finger pinch just started on this widget (zoomable widgets only).
+     *        Remember your current view here: scale is measured from this moment.
+     * @param center  Midpoint between the two fingers.
+     */
+    virtual void touch_zoom_begin(Point center) {}
+
+    /**
+     * @brief Live pinch. Called on every change while two fingers are down
+     *        (zoomable widgets only). Zoom and pan both come from this one call.
+     * @param scale   Finger distance now / when the pinch began. 1 = unchanged,
+     *                above 1 = fingers moving apart, below 1 = together.
+     * @param center  Midpoint between the two fingers right now. Moving it pans.
+     */
+    virtual void touch_zoom(float scale, Point center) {}
 
     /** TAP_ONLY widgets only: the touch was taken away (finger slid off, or
      *  became a swipe), so undo any "pressed" look. */
@@ -452,14 +467,20 @@ private:
 };
 
 /**
- * Scrolling line graph. Newest sample on the RIGHT, older samples to the
- * left. Keeps the last MAX_POINTS samples. TouchPolicy::NONE.
+ * Scrolling line graph. Newest sample on the RIGHT. Keeps the last MAX_POINTS
+ * samples.
+ *
+ *   Two fingers : pinch to zoom, and slide both fingers to pan back through history.
+ *                 The sample under your fingers stays under your fingers.
+ *   Tap         : snap back to live (fully zoomed out, newest sample at the right).
+ *   One finger  : still swipes the page.
+ * While you are panned back, the view stays on the same samples as new ones arrive.
  */
 class Graph : public Widget
 {
 public:
     /** Maximum samples stored. */
-    static constexpr int MAX_POINTS = 256;
+    static constexpr int MAX_POINTS = 2048;
 
     /**
      * @param x  Left edge.
@@ -472,6 +493,28 @@ public:
 
     /** @brief Paints the widget. Called for you by Page (via render()) when the widget is dirty. */
     void draw() override;
+
+    /** @brief Tap on the graph: snap back to live (see reset_view()). */
+    void touch_tap() override;
+
+    /**
+     * @brief Pinch started: remembers which sample is under the fingers.
+     * @param center  Midpoint between the two fingers.
+     */
+    void touch_zoom_begin(Point center) override;
+
+    /**
+     * @brief Live pinch: zooms with the finger distance and pans with the finger midpoint.
+     * @param scale   Finger distance now / when the pinch began (above 1 = zoom in).
+     * @param center  Midpoint between the two fingers right now.
+     */
+    void touch_zoom(float scale, Point center) override;
+
+    /** @brief Back to live: fully zoomed out, newest sample at the right edge. */
+    void reset_view();
+
+    /** @return true if the view is following the newest sample (not panned back). */
+    bool is_live() const { return offset == 0; }
 
     /**
      * Append one sample (the oldest one drops off once MAX_POINTS is reached).
@@ -527,6 +570,18 @@ private:
     int16_t map_y(int32_t v) const;
 
     bool dirty_full;
+
+    // view window: `window` samples wide (0 = auto: show all that fit), ending
+    // `offset` samples back from the newest one (0 = live)
+    int window;
+    int offset;
+    int base_window;  // window when the pinch began
+    float anchor_age; // age of the sample that was under the fingers at pinch start
+
+    int effective_window();
+    void clamp_offset();
+
+    static constexpr int MIN_WINDOW = 8; // most you can zoom in: 8 samples
 };
 
 /**

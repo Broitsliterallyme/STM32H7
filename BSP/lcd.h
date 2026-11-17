@@ -14,6 +14,11 @@
 #include <stdbool.h>
 #include "main.h"
 #include "ltdc.h"
+#include "lcd_ltdc.h" /* defines LTDC_PIXFORMAT + lcdltdc: MUST come before the #if blocks below */
+
+#ifndef LTDC_PIXFORMAT
+#error "LTDC_PIXFORMAT is not defined - lcd.h would silently pick the wrong pixel format"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -196,10 +201,10 @@ extern uint32_t *g_ltdc_framebuf[2];
     do                                                                                                       \
     {                                                                                                        \
         if (lcdltdc.dir)                                                                                     \
-            *(uint32_t *)((uint32_t)g_ltdc_framebuf[lcdltdc.activelayer] +                                   \
+            *(uint32_t *)((uint32_t)g_ltdc_framebuf[g_draw_layer] +                                   \
                           lcdltdc.pixsize * (lcdltdc.pwidth * (y) + (x))) = (color);                         \
         else                                                                                                 \
-            *(uint32_t *)((uint32_t)g_ltdc_framebuf[lcdltdc.activelayer] +                                   \
+            *(uint32_t *)((uint32_t)g_ltdc_framebuf[g_draw_layer] +                                   \
                           lcdltdc.pixsize * (lcdltdc.pwidth * (lcdltdc.pheight - (x) - 1) + (y))) = (color); \
     } while (0)
 #elif LTDC_PIXFORMAT == LTDC_PIXFORMAT_RGB888
@@ -207,8 +212,8 @@ extern uint32_t *g_ltdc_framebuf[2];
     do                                                                                                                                                          \
     {                                                                                                                                                           \
         uint32_t _off_ = lcdltdc.dir ? lcdltdc.pixsize * (lcdltdc.pwidth * (y) + (x)) : lcdltdc.pixsize * (lcdltdc.pwidth * (lcdltdc.pheight - (x) - 1) + (y)); \
-        *(uint16_t *)((uint32_t)g_ltdc_framebuf[lcdltdc.activelayer] + _off_) = (uint16_t)(color);                                                              \
-        *(uint8_t *)((uint32_t)g_ltdc_framebuf[lcdltdc.activelayer] + _off_ + 2) = (uint8_t)((color) >> 16);                                                    \
+        *(uint16_t *)((uint32_t)g_ltdc_framebuf[g_draw_layer] + _off_) = (uint16_t)(color);                                                              \
+        *(uint8_t *)((uint32_t)g_ltdc_framebuf[g_draw_layer] + _off_ + 2) = (uint8_t)((color) >> 16);                                                    \
     } while (0)
 #else /* RGB565 */
 extern uint8_t g_draw_layer;

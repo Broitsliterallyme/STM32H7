@@ -344,9 +344,11 @@ Graph::Graph(int16_t x, int16_t y, int16_t w, int16_t h)
       y_min(0), y_max(100),
       auto_scale(true),
       px(0), py(0), pw(0), ph(0),
-      dirty_full(true)
+      dirty_full(true),
+      window(0), offset(0), base_window(0), anchor_age(0)
 {
-    policy = TouchPolicy::NONE;
+    policy = TouchPolicy::TAP_ONLY; // a tap snaps back to live; one-finger swipes still change page
+    zoomable = true;                // two-finger pinch zooms and pans it
     memset(samples, 0, sizeof(samples));
 }
 
@@ -356,8 +358,15 @@ void Graph::push(int32_t value)
     head = (head + 1) % MAX_POINTS;
     if (count < MAX_POINTS)
         count++;
-    if (auto_scale)
-        compute_y_range();
+
+    // Panned back into history: keep looking at the same samples (the view
+    // slides one sample further back for every new one that arrives).
+    if (offset > 0)
+    {
+        offset++;
+        clamp_offset();
+    }
+
     mark_dirty();
 }
 
@@ -370,8 +379,7 @@ void Graph::set_data(const int32_t *data, int n)
     memcpy(samples, data, n * sizeof(int32_t));
     count = n;
     head = n % MAX_POINTS;
-    if (auto_scale)
-        compute_y_range();
+    clamp_offset();
     dirty_full = true;
     mark_dirty();
 }
@@ -380,6 +388,8 @@ void Graph::clear()
 {
     count = 0;
     head = 0;
+    window = 0;
+    offset = 0;
     dirty_full = true;
     mark_dirty();
 }
@@ -411,15 +421,22 @@ void Graph::compute_plot_area()
 
 void Graph::compute_y_range()
 {
-    if (count == 0)
+    int win = effective_window();
+    int last_age = offset + win - 1;
+    if (last_age > count - 1)
+        last_age = count - 1;
+    if (count == 0 || last_age < offset)
         return;
-    int32_t lo = samples[0], hi = samples[0];
-    for (int i = 1; i < count; ++i)
+
+    int32_t lo = samples[((head - 1 - offset) % MAX_POINTS + MAX_POINTS) % MAX_POINTS];
+    int32_t hi = lo;
+    for (int a = offset + 1; a <= last_age; ++a)
     {
-        if (samples[i] < lo)
-            lo = samples[i];
-        if (samples[i] > hi)
-            hi = samples[i];
+        int32_t v = samples[((head - 1 - a) % MAX_POINTS + MAX_POINTS) % MAX_POINTS];
+        if (v < lo)
+            lo = v;
+        if (v > hi)
+            hi = v;
     }
     if (lo == hi)
     {
@@ -444,6 +461,8 @@ void Graph::draw()
     if (!visible)
         return;
     compute_plot_area();
+    if (auto_scale)
+        compute_y_range();
 
     lcd_fill(x, y, x + w - 1, y + h - 1, color_bg);
     lcd_draw_rectangle(px, py, px + pw - 1, py + ph - 1, color_axis);
@@ -477,22 +496,30 @@ void Graph::draw()
             lcd_draw_vline(gx, py + 1, ph - 2, color_grid);
     }
 
-    int n = (count < pw) ? count : pw;
-    if (n >= 2)
+    // The visible window is `win` samples wide, ending `offset` samples back from
+    // the newest one (age 0 = newest). The newest visible sample is at the right.
+    int win = effective_window();
+    int last_age = offset + win - 1;
+    if (last_age > count - 1)
+        last_age = count - 1;
+    int step = (win > pw) ? (win + pw - 1) / pw : 1; // more samples than pixels: skip some
+
+    if (last_age - offset >= 1)
     {
-        for (int i = 1; i < n; ++i)
+        int16_t prev_x = 0, prev_y = 0;
+        bool have_prev = false;
+
+        for (int a = offset; a <= last_age; a += step)
         {
-            int age0 = n - 1 - i;
-            int age1 = n - i;
-            int si0 = ((head - 1 - age0) % MAX_POINTS + MAX_POINTS) % MAX_POINTS;
-            int si1 = ((head - 1 - age1) % MAX_POINTS + MAX_POINTS) % MAX_POINTS;
+            int si = ((head - 1 - a) % MAX_POINTS + MAX_POINTS) % MAX_POINTS;
+            int16_t xx = (int16_t)(px + pw - 1 - (a - offset) * (pw - 1) / (win - 1));
+            int16_t yy = map_y(samples[si]);
 
-            int16_t x0 = (int16_t)(px + pw - 1 - age0 * (pw - 1) / (n - 1));
-            int16_t x1 = (int16_t)(px + pw - 1 - age1 * (pw - 1) / (n - 1));
-            int16_t y0 = map_y(samples[si0]);
-            int16_t y1 = map_y(samples[si1]);
-
-            lcd_draw_line(x0, y0, x1, y1, color_line);
+            if (have_prev)
+                lcd_draw_line(prev_x, prev_y, xx, yy, color_line);
+            prev_x = xx;
+            prev_y = yy;
+            have_prev = true;
         }
     }
 
@@ -866,6 +893,84 @@ void FpsCounter::tick()
     {
         fps = 480000000 / delta;
         snprintf(buf, sizeof(buf), "FPS:%lu", fps);
+        mark_dirty();
+    }
+}
+
+// ---- Graph: view window, tap-to-reset, pinch zoom + pan -------------------
+
+// How many samples the window shows. 0 means "auto": show everything that fits.
+int Graph::effective_window()
+{
+    compute_plot_area();
+    int win = (window > 0) ? window : ((count < pw) ? count : pw);
+    return (win < 2) ? 2 : win;
+}
+
+// Keep the window inside the data: offset 0 = live, never past the oldest sample.
+void Graph::clamp_offset()
+{
+    int win = effective_window();
+    int max_off = (count > win) ? (count - win) : 0;
+    if (offset > max_off)
+        offset = max_off;
+    if (offset < 0)
+        offset = 0;
+}
+
+void Graph::reset_view()
+{
+    window = 0;
+    offset = 0;
+    mark_dirty();
+}
+
+void Graph::touch_tap()
+{
+    reset_view();
+}
+
+// Pinch starts: remember which sample is under the fingers. As the fingers
+// spread, close or slide, the view is rebuilt so that SAME sample stays under
+// the fingers. That one rule gives zoom and pan together.
+void Graph::touch_zoom_begin(Point center)
+{
+    base_window = effective_window();
+
+    float u = (float)(center.x - px) / (float)(pw - 1); // 0 = left edge, 1 = right edge
+    if (u < 0.0f) u = 0.0f;
+    if (u > 1.0f) u = 1.0f;
+
+    anchor_age = offset + (1.0f - u) * (base_window - 1); // age of the sample under the fingers
+}
+
+void Graph::touch_zoom(float scale, Point center)
+{
+    if (scale < 0.1f)
+        scale = 0.1f; // fingers touching: avoid a huge window
+
+    // fingers apart (scale > 1) -> fewer samples on screen = zoomed in
+    int win = (int)(base_window / scale + 0.5f);
+    if (win < MIN_WINDOW) win = MIN_WINDOW;
+    if (win > MAX_POINTS) win = MAX_POINTS;
+
+    float u = (float)(center.x - px) / (float)(pw - 1);
+    if (u < 0.0f) u = 0.0f;
+    if (u > 1.0f) u = 1.0f;
+
+    // fingers sliding right drags older samples into view (offset grows)
+    float off_f = anchor_age - (1.0f - u) * (win - 1);
+    if (off_f < 0.0f)
+        off_f = 0.0f;
+    int off = (int)(off_f + 0.5f);
+    int max_off = (count > win) ? (count - win) : 0;
+    if (off > max_off)
+        off = max_off;
+
+    if (win != window || off != offset)
+    {
+        window = win;
+        offset = off;
         mark_dirty();
     }
 }
